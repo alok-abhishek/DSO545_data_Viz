@@ -1,0 +1,184 @@
+---
+title: "Data Viz"
+author: 'DSO 545: Statistical Computing and Data Visualization'
+date: "Spring 2017"
+output: pdf_document
+---
+
+```{r global_options, include=FALSE}
+knitr::opts_chunk$set(echo=FALSE, warning=FALSE, message=FALSE)
+```
+
+```{r}
+library(dplyr);library(lubridate);
+library(maps);library(ggplot2)
+```
+
+## Case 01: The 50 States of the Union
+
+The data set `states_data.csv` details information about the 50 States of the United States of America.
+
+### Variables
+
+|**Variable**                     |**Description**
+----------------------------------|-------------------------------------------------------
+|**state**                        |State in the US|
+|**order**                        |Order in which the state was admitted|
+|**admission_date**               |Date that the state was admitted|
+|**estimate_2016**                |Estimate of the state's population in 2016|
+|**census_2016**                  |State's population according to the 2010 census|
+|**total_area**                   |Total area of the state (in square miles)|
+
+```{r}
+data <- read.csv("states_data.csv")
+```
+
+(@) Which 5 States saw the largest population growth (as a percentage change, not absolute change) between 2010 and 2016? ($Change = \dfrac{estimate_{2016} - census_{2010}}{census_{2010}}$)
+
+```{r}
+ans1 <- data %>% 
+  mutate(change = (estimate_2016-census_2010)/census_2010) %>% 
+  arrange(-change) %>% 
+  slice(1:5) %>% 
+  dplyr::select(state)
+```
+
+(@) Add two new variables, `month` and `year`, to your dataset that indicates the month and year that each state was added to the union. Which month saw the most states added?
+
+```{r}
+data$admission_date <- mdy(data$admission_date)
+
+data <- data %>% 
+  mutate(
+    month = month(admission_date,label=T,abbr=F),
+    year = year(admission_date)
+  )
+
+ans2 <- data %>% 
+  count(month) %>% 
+  arrange(-n) %>% 
+  slice(1) %>% 
+  dplyr::select(month)
+```
+
+(@) Create an **EXACT** copy of the following graph. Use colors `purple`, `red`, `darkorange`, and `yellow`.
+
+```{r,fig.height=3.6}
+data$yeartiers <- ifelse(data$year<1800,"Before 1800",
+                         ifelse(data$year<1850,"1800-1849",
+                                ifelse(data$year<1900,"1850-1899","After 1900")))
+
+states <- map_data("state")
+
+data$state <- tolower(data$state)
+
+states <- left_join(states,data, by = c("region"="state"))
+
+states$yeartiers <- factor(states$yeartiers)
+
+lev <- levels(states$yeartiers)
+
+lev <- lev[c(4,1:3)]
+
+states$yeartiers <- factor(states$yeartiers,levels = lev)
+
+states %>% 
+  filter(!is.na(yeartiers)) %>% 
+  ggplot(aes(long,lat,group=group,fill=yeartiers,"Before 1800"))+
+  geom_polygon(col = "black")+
+  scale_fill_manual("Year Admitted", values = c("purple","red","darkorange","yellow"))+
+  theme_void()+
+  ggtitle("States by Year Admitted to Union")+
+  theme(plot.title = element_text(hjust = 0.5, size = 15),
+        plot.margin = unit(c(.5,0,0,0),"cm"))
+```
+
+\newpage
+
+(@) Create a new variable called `population_density`, defined as the the ratio of population to total area, and recreate an **EXACT** copy of the following graph. Use colors `darkred` and `white`. (**Note**: Please use `estimate_2016` rather than `census_2016` when computing `population_density`) 
+
+```{r,fig.height=3.6}
+states %>% 
+  mutate(population_density = estimate_2016/total_area) %>% 
+  ggplot(aes(long,lat,group=group,fill=population_density))+
+  geom_polygon(col="black")+
+  scale_fill_gradient("Population Density", low = "white", high = "darkred")+
+  theme_void()+
+  ggtitle("Population Density (persons per sq. mile) by State")+
+  theme(plot.title = element_text(hjust = 0.5, size = 15),
+        plot.margin = unit(c(.5,0,0,0),"cm"))
+```
+
+## Case 02: Voter Breakdown for the Counties of California
+
+The data set `california_counties.csv` contains some basic information about each county in california along with how each county voted in the most recent presidential election. 
+
+### Variables
+
+|**Variable**                     |**Description**
+----------------------------------|-------------------------------------------------------
+|**county**                       |County in California|
+|**population**                   |Population of the County|
+|**area**                         |Land area of the County|
+|**date_formed**                  |Date the County was formed|
+|**democrat**                     |Number of Democratic voters in the most recent presidential election|
+|**republican**                   |Number of Republican voters in the most recent presidential election|
+
+```{r}
+data <- read.csv("california_counties.csv")
+```
+
+\newpage
+
+(@) Create an **EXACT** copy of the following graph. Use color `lightblue`.
+
+```{r}
+data$date_formed <- ymd(data$date_formed)
+
+data %>% 
+  mutate(Year = year(date_formed)) %>% 
+  ggplot(aes(factor(Year)))+
+  geom_bar(col = "black", fill = "lightblue")+
+  labs(title = "Number of Counties formed in California per Year",
+       x = "Year", y = '')+
+  scale_y_continuous(breaks=seq(0,27,2))+
+  theme(plot.title = element_text(hjust = 0.5, size = 15))
+```
+
+(@) Create a new variable, `percent_democrat`, defined as the percentage of the population that voted democrat in each county during the most recent presidential election. Which county had the highest percentage of the population vote Democrat? 
+
+```{r}
+data <- data %>% 
+  mutate(percent_democrat = democrat/population)
+
+ans5 <- data %>% 
+  arrange(-percent_democrat) %>% 
+  slice(1) %>% 
+  dplyr::select(county)
+```
+
+\newpage
+
+(@) Create an **EXACT** copy of the following graph. Use colors `red` for republican and `blue` for democrat. (**Note:** Counties labeled Democrat are those which had more Democratic than Republican voters in the last presidential election, and counties labeled Republican are those which had more Republican than Democratic voters in the last presidenial election)
+
+```{r,fig.height=6.5}
+california <- map_data("county") %>% 
+  filter(region == "california")
+
+data$county <- tolower(data$county)
+
+data$repdem <- ifelse(data$democrat>data$republican,"Democrat","Republican")
+
+california <- left_join(california,data, by=c("subregion"="county"))
+
+ggplot(california, aes(long,lat,group=group,fill=repdem))+
+  geom_polygon(col="black")+
+  theme_void()+
+  scale_fill_manual("",values=c("blue","red"))+
+  ggtitle("California Voters by County")+
+  theme(plot.title = element_text(hjust = 0.5, size = 15),
+        plot.margin = unit(c(.5,0,0,0),"cm"))
+```
+
+
+
